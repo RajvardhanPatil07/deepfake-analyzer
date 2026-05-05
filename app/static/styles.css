@@ -1,4 +1,5 @@
 :root {
+  --topbar-height: 86px;
   --ink: #050505;
   --muted: #67625d;
   --paper: #fff8f1;
@@ -22,6 +23,7 @@
 
 html {
   scroll-behavior: smooth;
+  scroll-padding-top: calc(var(--topbar-height) + 24px);
 }
 
 body {
@@ -62,7 +64,7 @@ label {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  min-height: 86px;
+  min-height: var(--topbar-height);
   padding: 0 42px;
   border-bottom: 1px solid var(--line);
   background: rgba(255, 248, 241, 0.92);
@@ -149,11 +151,14 @@ main {
 
 .hero-shell {
   position: relative;
+  isolation: isolate;
   display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(380px, 520px);
-  gap: 42px;
-  min-height: calc(100vh - 86px);
-  padding: 132px 72px 82px 148px;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 520px);
+  align-items: center;
+  gap: 56px;
+  min-height: calc(100svh - var(--topbar-height));
+  padding: 84px 96px 86px 148px;
+  scroll-margin-top: calc(var(--topbar-height) + 24px);
 }
 
 .hero-copy {
@@ -181,10 +186,10 @@ p {
 }
 
 h1 {
-  max-width: 760px;
+  max-width: 720px;
   margin-bottom: 26px;
-  font-size: clamp(58px, 8vw, 132px);
-  line-height: 0.89;
+  font-size: clamp(56px, 6.25vw, 108px);
+  line-height: 0.95;
   letter-spacing: 0;
 }
 
@@ -429,12 +434,14 @@ h1::first-line,
 
 .orbit-art {
   position: absolute;
-  right: -40px;
-  top: 150px;
-  width: 760px;
-  height: 640px;
-  opacity: 0.9;
+  right: -210px;
+  top: 50%;
+  z-index: 1;
+  width: min(620px, 42vw);
+  height: min(520px, 36vw);
+  opacity: 0.32;
   pointer-events: none;
+  transform: translateY(-50%);
 }
 
 .orbit {
@@ -813,6 +820,10 @@ h1::first-line,
 }
 
 @media (max-width: 720px) {
+  :root {
+    --topbar-height: 74px;
+  }
+
   body::before {
     display: none;
   }

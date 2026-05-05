@@ -212,9 +212,12 @@ window.addEventListener("DOMContentLoaded", () => {
         method: "POST",
         body,
       });
-      const data = await response.json();
+      const contentType = response.headers.get("content-type") || "";
+      const data = contentType.includes("application/json")
+        ? await response.json()
+        : { detail: await response.text() };
       if (!response.ok) {
-        throw new Error(data.detail || "Analysis failed.");
+        throw new Error(data.detail || response.statusText || "Analysis failed.");
       }
       renderReport(data);
       setStatus("Complete");

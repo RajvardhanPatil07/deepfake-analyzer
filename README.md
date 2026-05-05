@@ -86,6 +86,13 @@ Set:
 GEMINI_API_KEY=your_real_key_here
 ```
 
+Optional fallback models can be configured for temporary Gemini overload or
+rate-limit failures:
+
+```bash
+GEMINI_FALLBACK_MODELS=gemini-2.5-flash-lite,gemini-2.0-flash
+```
+
 Never hard-code or commit your API key.
 
 ## Run locally
