@@ -598,6 +598,38 @@ h1::first-line,
   line-height: 1.02;
 }
 
+.detector-signal {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  margin-top: 28px;
+  padding: 16px;
+  border: 1px solid rgba(21, 48, 255, 0.2);
+  border-radius: 8px;
+  background: var(--blue-soft);
+}
+
+.detector-signal span,
+.detector-signal small {
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.detector-signal strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 18px;
+}
+
+.detector-signal small {
+  justify-self: end;
+  color: #3340a4;
+  text-align: right;
+}
+
 .badge-row {
   display: flex;
   flex-wrap: wrap;
@@ -682,7 +714,7 @@ h1::first-line,
 
 .signal-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
   gap: 18px;
   margin-top: 36px;
 }
@@ -883,10 +915,16 @@ h1::first-line,
   }
 
   .score-layout,
+  .detector-signal,
   .report-columns,
   .signal-grid,
   .limits-section {
     grid-template-columns: 1fr;
+  }
+
+  .detector-signal small {
+    justify-self: start;
+    text-align: left;
   }
 
   .score-ring {

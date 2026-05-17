@@ -19,6 +19,7 @@ you decide what to review next, not prove whether media is authentic.
 - Accepts image and video uploads
 - Validates extension and size before analysis
 - Uploads files to Gemini using the Files API
+- Runs a local Hugging Face fake/real classifier signal when enabled
 - Requests structured JSON output using a Pydantic schema
 - Renders a polished interactive UI for upload, analysis, and report review
 - Exposes the same analyzer through a CLI for local workflows
@@ -36,6 +37,7 @@ Each analysis returns:
 - `risk_score`: integer from `0` to `100`
 - `confidence`: `low`, `medium`, or `high`
 - `summary`
+- `detector_signal`: optional Hugging Face fake/real classifier score
 - `evidence[]`
 - `limitations[]`
 - `recommended_next_steps[]`
@@ -53,11 +55,27 @@ The prompt instructs Gemini to inspect:
 - metadata inconsistencies
 - low-quality media false positives
 
+## Detector model choice
+
+The default local detector is
+[`xRayon/convnext-ai-images-detector`](https://huggingface.co/xRayon/convnext-ai-images-detector).
+It was selected over older ViT/SigLIP detectors because its model card describes
+training on about 400k real-vs-AI images plus continual learning for newer
+generators, including DALL-E 3, Flux, SDXL, SD3.5, and Midjourney V6. Its card
+reports a 90.40% fake detection rate on an out-of-distribution EvalGen set.
+
+The smaller standard Transformers fallback is
+[`prithivMLmods/deepfake-detector-model-v1`](https://huggingface.co/prithivMLmods/deepfake-detector-model-v1),
+which is easier to deploy but less targeted to the app's clean AI-generated
+image failure case.
+
 ## Tech stack
 
 - Python 3.10+
 - FastAPI
 - Google Gemini via `google-genai`
+- Hugging Face Transformers
+- timm / TorchVision for ConvNeXt
 - Pydantic
 - OpenCV
 - Pillow
@@ -90,7 +108,26 @@ Optional fallback models can be configured for temporary Gemini overload or
 rate-limit failures:
 
 ```bash
-GEMINI_FALLBACK_MODELS=gemini-2.5-flash-lite,gemini-2.0-flash
+GEMINI_FALLBACK_MODELS=gemini-2.5-flash,gemini-2.5-flash-lite
+```
+
+The app runs `xRayon/convnext-ai-images-detector` locally as the default
+classifier signal. It was chosen because its model card describes newer
+training coverage for modern generators such as DALL-E 3, Flux, SDXL, SD3.5,
+and Midjourney V6. The first request downloads its checkpoint, which is roughly
+1.05 GB in the Hugging Face cache.
+
+```bash
+HF_DETECTOR_ENABLED=true
+HF_DETECTOR_MODEL=xRayon/convnext-ai-images-detector
+HF_DETECTOR_VIDEO_FRAMES=8
+HF_DETECTOR_FAKE_THRESHOLD=0.55
+```
+
+For a smaller standard Transformers fallback, set:
+
+```bash
+HF_DETECTOR_MODEL=prithivMLmods/deepfake-detector-model-v1
 ```
 
 Never hard-code or commit your API key.

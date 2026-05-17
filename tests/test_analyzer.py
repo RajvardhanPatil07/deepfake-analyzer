@@ -11,16 +11,22 @@ import pytest
 from google.genai import errors as genai_errors
 
 from app import analyzer
-from app.schemas import DeepfakeReport
+from app.schemas import DeepfakeReport, DetectorSignal
 
 
-def valid_report_json() -> str:
+def valid_report_json(
+    *,
+    label: str = "uncertain",
+    risk_score: int = 35,
+    confidence: str = "medium",
+    summary: str = "The media has only weak, ambiguous manipulation indicators.",
+) -> str:
     return json.dumps(
         {
-            "label": "uncertain",
-            "risk_score": 35,
-            "confidence": "medium",
-            "summary": "The media has only weak, ambiguous manipulation indicators.",
+            "label": label,
+            "risk_score": risk_score,
+            "confidence": confidence,
+            "summary": summary,
             "evidence": [],
             "limitations": ["Single image analysis cannot prove authenticity."],
             "recommended_next_steps": ["Review source provenance."],
@@ -77,6 +83,11 @@ def unavailable_error() -> genai_errors.ServerError:
     )
 
 
+@pytest.fixture(autouse=True)
+def disable_detector(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(analyzer, "analyze_media_with_detector", lambda media: None)
+
+
 def test_analyze_media_file_uses_fallback_model_after_transient_error(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -87,7 +98,7 @@ def test_analyze_media_file_uses_fallback_model_after_transient_error(
     report = analyzer.analyze_media_file(make_jpg(tmp_path))
 
     assert isinstance(report, DeepfakeReport)
-    assert fake_client.models.calls == ["gemini-2.5-flash", "gemini-2.5-flash-lite"]
+    assert fake_client.models.calls == ["gemini-2.5-pro", "gemini-2.5-flash"]
 
 
 def test_analyze_media_file_reports_temporary_error_after_all_fallbacks_fail(
@@ -101,7 +112,41 @@ def test_analyze_media_file_reports_temporary_error_after_all_fallbacks_fail(
         analyzer.analyze_media_file(make_jpg(tmp_path))
 
     assert fake_client.models.calls == [
+        "gemini-2.5-pro",
         "gemini-2.5-flash",
         "gemini-2.5-flash-lite",
-        "gemini-2.0-flash",
     ]
+
+
+def test_analyze_media_file_raises_low_gemini_result_with_fake_detector_signal(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake_client = FakeClient(
+        [
+            valid_report_json(
+                label="likely_authentic",
+                risk_score=12,
+                confidence="medium",
+                summary="No strong visual manipulation artifacts are visible.",
+            )
+        ]
+    )
+    detector_signal = DetectorSignal(
+        model="xRayon/convnext-ai-images-detector",
+        media_type="image",
+        label="fake",
+        fake_probability=0.88,
+        real_probability=0.12,
+        confidence="high",
+        frames_analyzed=1,
+    )
+    monkeypatch.setattr(analyzer, "create_client", lambda: fake_client)
+    monkeypatch.setattr(analyzer, "analyze_media_with_detector", lambda media: detector_signal)
+
+    report = analyzer.analyze_media_file(make_jpg(tmp_path))
+
+    assert report.label == "likely_manipulated"
+    assert report.risk_score == 88
+    assert report.detector_signal == detector_signal
+    assert report.evidence[-1].category == "Classifier signal"
