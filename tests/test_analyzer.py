@@ -150,3 +150,39 @@ def test_analyze_media_file_raises_low_gemini_result_with_fake_detector_signal(
     assert report.risk_score == 88
     assert report.detector_signal == detector_signal
     assert report.evidence[-1].category == "Classifier signal"
+
+
+def test_low_resolution_portrait_is_not_high_confidence_authentic() -> None:
+    report = DeepfakeReport.model_validate_json(
+        valid_report_json(
+            label="likely_authentic",
+            risk_score=15,
+            confidence="high",
+            summary="No strong visual manipulation artifacts are visible.",
+        )
+    )
+    context = analyzer.ImageContext(width=275, height=183, has_prominent_face=True)
+
+    calibrated = analyzer._calibrate_low_information_portrait(report, context)
+
+    assert calibrated.label == "uncertain"
+    assert calibrated.risk_score == 42
+    assert calibrated.confidence == "low"
+    assert calibrated.evidence[-1].category == "Assessment quality"
+    assert "Low-resolution face portraits" in calibrated.limitations[-1]
+
+
+def test_low_resolution_portrait_guard_does_not_lower_existing_risk() -> None:
+    report = DeepfakeReport.model_validate_json(
+        valid_report_json(
+            label="suspicious",
+            risk_score=60,
+            confidence="medium",
+            summary="Several visual anomalies are visible.",
+        )
+    )
+    context = analyzer.ImageContext(width=275, height=183, has_prominent_face=True)
+
+    calibrated = analyzer._calibrate_low_information_portrait(report, context)
+
+    assert calibrated == report

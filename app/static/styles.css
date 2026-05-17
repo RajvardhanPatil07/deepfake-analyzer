@@ -630,6 +630,16 @@ h1::first-line,
   text-align: right;
 }
 
+.detector-signal.is-unavailable {
+  border-color: rgba(5, 5, 5, 0.14);
+  background: var(--paper);
+}
+
+.detector-signal.is-unavailable span,
+.detector-signal.is-unavailable small {
+  color: var(--muted);
+}
+
 .badge-row {
   display: flex;
   flex-wrap: wrap;

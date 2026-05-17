@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Union
 
@@ -123,9 +124,12 @@ def _analysis_prompt(detector_signal: DetectorSignal | None) -> str:
         f"- Fake probability: {fake_percent}%\n"
         f"- Real probability: {real_percent}%\n"
         f"- Frames/images analyzed: {detector_signal.frames_analyzed}\n\n"
-        "Use this classifier output as one non-forensic signal. If it conflicts "
-        "with visible evidence, explain the uncertainty instead of ignoring it. "
-        "Do not include detector_signal in the JSON; the app will add it."
+        "Use this classifier output as one non-forensic signal. A fake label may "
+        "raise concern, but a real label must not be treated as proof of authenticity; "
+        "clean AI portraits and low-resolution images can be detector false negatives. "
+        "If the classifier conflicts with visible evidence or quality limitations, "
+        "explain the uncertainty instead of ignoring it. Do not include "
+        "detector_signal in the JSON; the app will add it."
     )
 
 
@@ -168,6 +172,21 @@ LABEL_RANK = {
     "suspicious": 2,
     "likely_manipulated": 3,
 }
+
+
+@dataclass(frozen=True)
+class ImageContext:
+    width: int
+    height: int
+    has_prominent_face: bool
+
+    @property
+    def is_low_resolution(self) -> bool:
+        return min(self.width, self.height) < 320 or (self.width * self.height) < 120_000
+
+    @property
+    def needs_authenticity_caution(self) -> bool:
+        return self.is_low_resolution and self.has_prominent_face
 
 
 def _higher_risk_label(current: str, candidate: str) -> str:
@@ -258,6 +277,84 @@ def _calibrate_with_detector(
     return report.model_copy(update=updates)
 
 
+def _image_context(path: Path) -> ImageContext | None:
+    try:
+        from PIL import Image
+
+        with Image.open(path) as image:
+            width, height = image.size
+    except Exception:
+        return None
+
+    has_prominent_face = False
+    try:
+        import cv2
+
+        image = cv2.imread(str(path))
+        if image is not None:
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            cascade = cv2.CascadeClassifier(
+                cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+            )
+            faces = cascade.detectMultiScale(
+                gray,
+                scaleFactor=1.1,
+                minNeighbors=4,
+                minSize=(40, 40),
+            )
+            image_area = width * height
+            has_prominent_face = any(
+                (face_width * face_height) / image_area >= 0.12
+                for _, _, face_width, face_height in faces
+            )
+    except Exception:
+        has_prominent_face = False
+
+    return ImageContext(width=width, height=height, has_prominent_face=has_prominent_face)
+
+
+def _calibrate_low_information_portrait(
+    report: DeepfakeReport,
+    context: ImageContext | None,
+) -> DeepfakeReport:
+    if context is None or not context.needs_authenticity_caution:
+        return report
+    if report.label != "likely_authentic" or report.risk_score > 45:
+        return report
+
+    evidence = [
+        *report.evidence,
+        EvidenceItem(
+            category="Assessment quality",
+            finding=(
+                f"The image is only {context.width}x{context.height} pixels and is dominated "
+                "by a face portrait, so the absence of visible artifacts is weak evidence "
+                "for authenticity."
+            ),
+            severity="medium",
+            timestamp=None,
+        ),
+    ]
+    limitations = _with_unique_item(
+        list(report.limitations),
+        "Low-resolution face portraits can hide AI-generation artifacts and can also cause "
+        "false real/fake classifier confidence.",
+    )
+    return report.model_copy(
+        update={
+            "label": "uncertain",
+            "risk_score": max(report.risk_score, 42),
+            "confidence": "low" if report.confidence == "high" else report.confidence,
+            "summary": (
+                "This low-resolution portrait should not be treated as likely authentic from "
+                f"visual inspection alone. {report.summary}"
+            ),
+            "evidence": evidence,
+            "limitations": limitations,
+        }
+    )
+
+
 def analyze_media_file(
     file_path: Union[str, Path],
     *,
@@ -273,6 +370,7 @@ def analyze_media_file(
 
     client = create_client()
     detector_signal = analyze_media_with_detector(media)
+    image_context = _image_context(media.path) if media.media_type == "image" else None
 
     try:
         uploaded_file = client.files.upload(file=str(media.path))
@@ -295,4 +393,5 @@ def analyze_media_file(
         report = DeepfakeReport.model_validate_json(response_text)
     except ValidationError as exc:
         raise AnalyzerResponseError("Gemini returned JSON that did not match the schema.") from exc
-    return _calibrate_with_detector(report, detector_signal)
+    calibrated = _calibrate_with_detector(report, detector_signal)
+    return _calibrate_low_information_portrait(calibrated, image_context)

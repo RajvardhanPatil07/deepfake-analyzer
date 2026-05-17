@@ -17,6 +17,9 @@ Inspect for:
 - lighting and shadow inconsistencies
 - unnatural skin texture
 - distorted eyes, teeth, ears, hair, glasses, jewelry, or accessories
+- clean AI portrait cues such as overly smooth skin, inconsistent catchlights,
+  implausibly coherent facial symmetry, painterly hair edges, or synthetic
+  background blur
 - lip-sync mismatch
 - blinking or gaze anomalies
 - temporal flicker or inconsistent identity across frames
@@ -26,7 +29,8 @@ Inspect for:
 
 Label guidance:
 - likely_authentic: no meaningful manipulation indicators are visible, while still
-  acknowledging that authenticity is not proven.
+  acknowledging that authenticity is not proven. Do not use this label with high
+  confidence for low-resolution face portraits where artifacts would be hard to see.
 - uncertain: evidence is mixed, weak, low quality, or insufficient.
 - suspicious: multiple visible anomalies suggest elevated synthetic/manipulation risk.
 - likely_manipulated: strong, consistent anomalies suggest a high manipulation risk.

@@ -192,16 +192,25 @@ window.addEventListener("DOMContentLoaded", () => {
     confidenceBadge.textContent = `${report.confidence || "low"} confidence`;
     summary.textContent = report.summary || "No summary returned.";
 
-    if (report.detector_signal && detectorSignal && detectorLabel && detectorScore && detectorMeta) {
+    if (!detectorSignal || !detectorLabel || !detectorScore || !detectorMeta) {
+      return;
+    }
+
+    detectorSignal.hidden = false;
+    if (report.detector_signal) {
       const signal = report.detector_signal;
       const fakePercent = Math.round(Number(signal.fake_probability || 0) * 100);
       const frames = Number(signal.frames_analyzed || 1);
-      detectorSignal.hidden = false;
       detectorLabel.textContent = `${prettyLabel(signal.label || "uncertain")} classifier`;
       detectorScore.textContent = `${fakePercent}% fake probability`;
       detectorMeta.textContent = `${frames} ${frames === 1 ? "image/frame" : "images/frames"} · ${
         signal.confidence || "low"
       } confidence · ${signal.model || "detector"}`;
+    } else {
+      detectorSignal.classList.add("is-unavailable");
+      detectorLabel.textContent = "Hugging Face detector";
+      detectorScore.textContent = "No classifier signal returned";
+      detectorMeta.textContent = "Check HF_DETECTOR_ENABLED and local model dependencies";
     }
 
     renderStack(reportCard.querySelector("#evidence-list"), report.evidence, (item) => {
