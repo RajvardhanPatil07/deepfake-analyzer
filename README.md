@@ -1,11 +1,12 @@
 # deepfake-analyzer
 
-Interactive FastAPI + CLI app for screening images and videos for possible
-deepfake, synthetic media, or manipulation risk using the Google Gemini API.
+Interactive FastAPI, web UI, and CLI app for screening images and videos for
+possible deepfake, synthetic media, or manipulation risk.
 
-This project is designed as a risk and anomaly analyzer, not a definitive
-forensic detector. It returns structured, uncertainty-aware reports that help
-you decide what to review next, not prove whether media is authentic.
+The analyzer combines a Gemini vision review with an optional local Hugging Face
+fake/real classifier signal. It is designed as a risk and anomaly analyzer, not
+a definitive forensic detector. The output helps decide what to review next; it
+does not prove whether media is authentic.
 
 ## Live demo
 
@@ -18,11 +19,18 @@ you decide what to review next, not prove whether media is authentic.
 
 - Accepts image and video uploads
 - Validates extension and size before analysis
-- Uploads files to Gemini using the Files API
-- Runs a local Hugging Face fake/real classifier signal when enabled
+- Uploads supported media to Gemini through the Files API
+- Runs an optional local Hugging Face classifier before Gemini analysis
+- Samples video frames for the local classifier signal
+- Injects the classifier signal into the Gemini prompt as a non-forensic clue
 - Requests structured JSON output using a Pydantic schema
-- Renders a polished interactive UI for upload, analysis, and report review
+- Calibrates the final report when the classifier strongly disagrees with a
+  low-risk Gemini result
+- Renders a web UI for upload, analysis, detector signal review, and report
+  inspection
 - Exposes the same analyzer through a CLI for local workflows
+- Returns user-safe API errors for validation, configuration, Gemini response,
+  and temporary overload failures
 
 Supported media:
 
@@ -42,6 +50,29 @@ Each analysis returns:
 - `limitations[]`
 - `recommended_next_steps[]`
 
+Example response:
+
+```json
+{
+  "label": "suspicious",
+  "risk_score": 64,
+  "confidence": "medium",
+  "summary": "The media contains several visual signals that warrant review.",
+  "detector_signal": {
+    "model": "xRayon/convnext-ai-images-detector",
+    "media_type": "image",
+    "label": "fake",
+    "fake_probability": 0.72,
+    "real_probability": 0.28,
+    "confidence": "medium",
+    "frames_analyzed": 1
+  },
+  "evidence": [],
+  "limitations": [],
+  "recommended_next_steps": []
+}
+```
+
 The prompt instructs Gemini to inspect:
 
 - face boundary artifacts
@@ -59,15 +90,19 @@ The prompt instructs Gemini to inspect:
 
 The default local detector is
 [`xRayon/convnext-ai-images-detector`](https://huggingface.co/xRayon/convnext-ai-images-detector).
-It was selected over older ViT/SigLIP detectors because its model card describes
-training on about 400k real-vs-AI images plus continual learning for newer
-generators, including DALL-E 3, Flux, SDXL, SD3.5, and Midjourney V6. Its card
-reports a 90.40% fake detection rate on an out-of-distribution EvalGen set.
+It was selected over older ViT and SigLIP detectors because its model card
+describes training on about 400k real-vs-AI images plus continual learning for
+newer generators, including DALL-E 3, Flux, SDXL, SD3.5, and Midjourney V6. Its
+card reports a 90.40% fake detection rate on an out-of-distribution EvalGen set.
 
 The smaller standard Transformers fallback is
 [`prithivMLmods/deepfake-detector-model-v1`](https://huggingface.co/prithivMLmods/deepfake-detector-model-v1),
 which is easier to deploy but less targeted to the app's clean AI-generated
 image failure case.
+
+The detector is optional. If dependencies are missing, model loading fails, or
+`HF_DETECTOR_ENABLED=false`, the app still runs the Gemini analysis without the
+local classifier signal.
 
 ## Tech stack
 
@@ -132,6 +167,17 @@ HF_DETECTOR_MODEL=prithivMLmods/deepfake-detector-model-v1
 
 Never hard-code or commit your API key.
 
+### Environment variables
+
+| Variable | Required | Default | Notes |
+| --- | --- | --- | --- |
+| `GEMINI_API_KEY` | Yes | None | Google Gemini API key used by `google-genai`. |
+| `GEMINI_FALLBACK_MODELS` | No | `gemini-2.5-flash,gemini-2.5-flash-lite` | Comma-separated fallback models tried after transient Gemini errors. |
+| `HF_DETECTOR_ENABLED` | No | `true` | Set to `false` to skip the local classifier. |
+| `HF_DETECTOR_MODEL` | No | `xRayon/convnext-ai-images-detector` | Hugging Face detector model id. |
+| `HF_DETECTOR_VIDEO_FRAMES` | No | `8` | Number of evenly spaced video frames to classify. Clamped from 1 to 24. |
+| `HF_DETECTOR_FAKE_THRESHOLD` | No | `0.55` | Fake probability threshold used to label the detector signal. |
+
 ## Run locally
 
 Start the server:
@@ -166,18 +212,79 @@ Run the CLI:
 python cli.py path/to/file.mp4
 ```
 
+Choose a Gemini model or upload limit:
+
+```bash
+python cli.py path/to/file.jpg --model gemini-2.5-flash --max-mb 50
+```
+
 ## API notes
 
 `POST /analyze` accepts a multipart file upload and returns a `DeepfakeReport`
 object. The app hides internal stack traces from API responses and returns
 user-safe error messages for validation, configuration, and Gemini failures.
 
+Common responses:
+
+- `200`: analysis completed and returned a structured report
+- `400`: unsupported extension, empty upload, or file size violation
+- `500`: missing analyzer configuration such as `GEMINI_API_KEY`
+- `502`: Gemini rejected the request or returned an invalid structured response
+- `503`: transient Gemini overload or rate-limit failure after all configured
+  fallback models were tried
+
+The maximum upload size is `100 MB`. Supported images are `.jpg`, `.jpeg`,
+`.png`, and `.webp`. Supported videos are `.mp4`, `.mov`, `.mkv`, and `.webm`.
+
+## How analysis works
+
+1. The API or CLI validates the media path, extension, and size.
+2. If enabled, the local Hugging Face detector classifies the image or sampled
+   video frames.
+3. The media file is uploaded to Gemini with a strict JSON response schema.
+4. Gemini inspects visual, temporal, compression, metadata, and low-quality
+   false-positive signals.
+5. The app validates the Gemini JSON with Pydantic.
+6. If the local detector reports a strong fake probability, the app adds the
+   detector signal, appends classifier evidence, and raises the risk label or
+   score when needed.
+
+Gemini is asked not to return `detector_signal` directly. The app adds that
+field after validation so the model cannot invent classifier metadata.
+
+## Local detector notes
+
+- The default xRayon checkpoint is large and downloads on first use into the
+  Hugging Face cache.
+- `torch`, `torchvision`, `timm`, `safetensors`, `transformers`, and
+  `huggingface-hub` are included in `requirements.txt`.
+- On memory-limited hosts, set `HF_DETECTOR_ENABLED=false` or switch to the
+  smaller Transformers fallback model.
+- Video classification uses evenly spaced frames and aggregates the strongest
+  fake probabilities, so it is a screening signal for review priority, not a
+  frame-by-frame forensic result.
+
+## Deployment notes
+
+The repository includes `.vercelignore` for a lean deployment package. Configure
+`GEMINI_API_KEY` and any optional detector variables in the deployment
+environment.
+
+For serverless or small-memory deployments, consider disabling the local
+detector:
+
+```bash
+HF_DETECTOR_ENABLED=false
+```
+
+The app remains useful with Gemini-only analysis when the detector is disabled.
+
 ## Development
 
 Run tests:
 
 ```bash
-pytest
+python -m pytest -q
 ```
 
 Current project layout:
@@ -185,14 +292,21 @@ Current project layout:
 ```text
 deepfake-analyzer/
   app/
-    main.py
     analyzer.py
+    detector.py
+    main.py
     media_utils.py
     prompts.py
     schemas.py
     static/
+      app.js
+      index.html
+      styles.css
   tests/
+    test_analyzer.py
+    test_schemas.py
   cli.py
+  requirements.txt
 ```
 
 ## Privacy warning
