@@ -30,8 +30,8 @@
           <h1>Read the signal in synthetic media risk.</h1>
           <p class="intro">
             Upload an image or video and receive a structured, uncertainty-aware
-            report on visual manipulation indicators, temporal artifacts, and
-            practical next steps.
+            report on classifier risk, visual manipulation indicators, temporal
+            artifacts, and practical next steps.
           </p>
           <div class="hero-actions">
             <label class="button primary" for="file-input">
@@ -127,9 +127,14 @@
       <section class="signals-section" id="signals">
         <div class="section-title">
           <p class="eyebrow">Inspection map</p>
-          <h2>What the analyzer asks Gemini to inspect</h2>
+          <h2>What the analyzer inspects</h2>
         </div>
         <div class="signal-grid">
+          <article class="signal-card">
+            <span class="signal-icon positive" aria-hidden="true">+</span>
+            <h3>Classifier signal</h3>
+            <p>Hugging Face fake/real probability for images and sampled video frames.</p>
+          </article>
           <article class="signal-card">
             <span class="signal-icon warn" aria-hidden="true">×</span>
             <h3>Boundary artifacts</h3>
@@ -184,6 +189,11 @@
           </div>
           <h3 id="report-summary"></h3>
         </div>
+      </div>
+      <div class="detector-signal" id="detector-signal" hidden>
+        <span id="detector-label"></span>
+        <strong id="detector-score"></strong>
+        <small id="detector-meta"></small>
       </div>
       <div class="report-columns">
         <section>

@@ -45,7 +45,16 @@ window.addEventListener("DOMContentLoaded", () => {
     risk_score: 38,
     confidence: "medium",
     summary:
-      "The media shows a few ambiguous visual anomalies, but nothing strong enough to treat as definitive manipulation proof.",
+      "A local classifier raised the risk score, while visual artifacts remain ambiguous enough to require caution.",
+    detector_signal: {
+      model: "xRayon/convnext-ai-images-detector",
+      media_type: "image",
+      label: "fake",
+      fake_probability: 0.82,
+      real_probability: 0.18,
+      confidence: "high",
+      frames_analyzed: 1,
+    },
     evidence: [
       {
         category: "Skin texture",
@@ -171,6 +180,10 @@ window.addEventListener("DOMContentLoaded", () => {
     const labelBadge = reportCard.querySelector("#label-badge");
     const confidenceBadge = reportCard.querySelector("#confidence-badge");
     const summary = reportCard.querySelector("#report-summary");
+    const detectorSignal = reportCard.querySelector("#detector-signal");
+    const detectorLabel = reportCard.querySelector("#detector-label");
+    const detectorScore = reportCard.querySelector("#detector-score");
+    const detectorMeta = reportCard.querySelector("#detector-meta");
 
     scoreRing.style.setProperty("--score", `${Math.max(0, Math.min(score, 100)) * 3.6}deg`);
     riskScore.textContent = score;
@@ -178,6 +191,18 @@ window.addEventListener("DOMContentLoaded", () => {
     labelBadge.classList.add(classForLabel(report.label));
     confidenceBadge.textContent = `${report.confidence || "low"} confidence`;
     summary.textContent = report.summary || "No summary returned.";
+
+    if (report.detector_signal && detectorSignal && detectorLabel && detectorScore && detectorMeta) {
+      const signal = report.detector_signal;
+      const fakePercent = Math.round(Number(signal.fake_probability || 0) * 100);
+      const frames = Number(signal.frames_analyzed || 1);
+      detectorSignal.hidden = false;
+      detectorLabel.textContent = `${prettyLabel(signal.label || "uncertain")} classifier`;
+      detectorScore.textContent = `${fakePercent}% fake probability`;
+      detectorMeta.textContent = `${frames} ${frames === 1 ? "image/frame" : "images/frames"} · ${
+        signal.confidence || "low"
+      } confidence · ${signal.model || "detector"}`;
+    }
 
     renderStack(reportCard.querySelector("#evidence-list"), report.evidence, (item) => {
       const timestamp = item.timestamp ? ` · ${item.timestamp}` : "";
@@ -212,9 +237,12 @@ window.addEventListener("DOMContentLoaded", () => {
         method: "POST",
         body,
       });
-      const data = await response.json();
+      const contentType = response.headers.get("content-type") || "";
+      const data = contentType.includes("application/json")
+        ? await response.json()
+        : { detail: await response.text() };
       if (!response.ok) {
-        throw new Error(data.detail || "Analysis failed.");
+        throw new Error(data.detail || response.statusText || "Analysis failed.");
       }
       renderReport(data);
       setStatus("Complete");

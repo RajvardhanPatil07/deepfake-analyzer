@@ -35,6 +35,24 @@ def test_valid_report_payload_is_accepted() -> None:
     assert report.evidence[0].severity == "low"
 
 
+def test_report_accepts_optional_detector_signal() -> None:
+    payload = valid_report_payload()
+    payload["detector_signal"] = {
+        "model": "xRayon/convnext-ai-images-detector",
+        "media_type": "image",
+        "label": "fake",
+        "fake_probability": 0.91,
+        "real_probability": 0.09,
+        "confidence": "high",
+        "frames_analyzed": 1,
+    }
+
+    report = DeepfakeReport.model_validate(payload)
+
+    assert report.detector_signal is not None
+    assert report.detector_signal.fake_probability == 0.91
+
+
 @pytest.mark.parametrize("score", [-1, 101])
 def test_risk_score_must_be_between_zero_and_one_hundred(score: int) -> None:
     payload = valid_report_payload()

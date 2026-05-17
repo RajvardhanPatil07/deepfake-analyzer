@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from app.analyzer import AnalyzerError, analyze_media_file
+from app.analyzer import DEFAULT_MODEL, AnalyzerError, analyze_media_file
 from app.media_utils import DEFAULT_MAX_UPLOAD_MB, MediaValidationError
 
 
@@ -19,8 +19,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("file", help="Path to an image or video file.")
     parser.add_argument(
         "--model",
-        default="gemini-2.5-flash",
-        help="Gemini model to use. Defaults to gemini-2.5-flash.",
+        default=DEFAULT_MODEL,
+        help=f"Gemini model to use. Defaults to {DEFAULT_MODEL}.",
     )
     parser.add_argument(
         "--max-mb",

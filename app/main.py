@@ -14,6 +14,7 @@ from app.analyzer import (
     AnalyzerConfigurationError,
     AnalyzerError,
     AnalyzerResponseError,
+    AnalyzerTemporaryError,
     analyze_media_file,
 )
 from app.media_utils import (
@@ -93,11 +94,17 @@ def analyze(file: UploadFile = File(...)) -> DeepfakeReport:
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Gemini returned an invalid analysis response.",
         ) from exc
+    except AnalyzerTemporaryError as exc:
+        logger.warning("Temporary Gemini failure: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
     except AnalyzerError as exc:
-        logger.warning("Gemini analysis failed: %s", exc)
+        logger.warning("Gemini analysis failed: %s", exc, exc_info=exc.__cause__ is not None)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Gemini analysis failed.",
+            detail=str(exc),
         ) from exc
     except Exception as exc:
         logger.exception("Unexpected analyze endpoint failure")

@@ -16,6 +16,7 @@ DeepfakeLabel = Literal[
 
 ConfidenceLevel = Literal["low", "medium", "high"]
 EvidenceSeverity = Literal["low", "medium", "high"]
+DetectorLabel = Literal["fake", "real"]
 
 
 class EvidenceItem(BaseModel):
@@ -42,6 +43,28 @@ class EvidenceItem(BaseModel):
         return stripped
 
 
+class DetectorSignal(BaseModel):
+    """Optional classifier signal added by the app after Gemini analysis."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    model: str = Field(..., min_length=1, description="Classifier model identifier")
+    media_type: Literal["image", "video"] = Field(..., description="Analyzed media type")
+    label: DetectorLabel = Field(..., description="Classifier label")
+    fake_probability: float = Field(..., ge=0, le=1, description="Fake probability from 0 to 1")
+    real_probability: float = Field(..., ge=0, le=1, description="Real probability from 0 to 1")
+    confidence: ConfidenceLevel = Field(..., description="Classifier confidence bucket")
+    frames_analyzed: int = Field(..., ge=1, description="Number of images or frames analyzed")
+
+    @field_validator("model")
+    @classmethod
+    def strip_model(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("model must not be empty")
+        return stripped
+
+
 class DeepfakeReport(BaseModel):
     """Structured output returned by Gemini and exposed by the app."""
 
@@ -52,6 +75,10 @@ class DeepfakeReport(BaseModel):
     confidence: ConfidenceLevel = Field(..., description="Confidence in this assessment")
     summary: str = Field(..., min_length=1, description="Concise, uncertainty-aware summary")
     evidence: list[EvidenceItem] = Field(default_factory=list)
+    detector_signal: Optional[DetectorSignal] = Field(
+        default=None,
+        description="Optional local classifier signal used to calibrate the report",
+    )
     limitations: list[str] = Field(
         default_factory=list,
         description="Important uncertainty, quality, and method limitations",
