@@ -240,7 +240,7 @@ def _aggregate_scores(scores: list[ImageScore]) -> ImageScore:
 def analyze_media_with_detector(media: MediaInfo) -> DetectorSignal | None:
     """Run the optional Hugging Face detector and return a compact signal."""
 
-    if not _env_flag("HF_DETECTOR_ENABLED", default=True):
+    if not _env_flag("HF_DETECTOR_ENABLED", default=False):
         return None
 
     model_name = _configured_model()

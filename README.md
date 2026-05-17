@@ -109,8 +109,7 @@ local classifier signal.
 - Python 3.10+
 - FastAPI
 - Google Gemini via `google-genai`
-- Hugging Face Transformers
-- timm / TorchVision for ConvNeXt
+- Hugging Face Transformers, timm, and TorchVision for the optional local detector
 - Pydantic
 - OpenCV
 - Pillow
@@ -146,11 +145,19 @@ rate-limit failures:
 GEMINI_FALLBACK_MODELS=gemini-2.5-flash,gemini-2.5-flash-lite
 ```
 
-The app runs `xRayon/convnext-ai-images-detector` locally as the default
-classifier signal. It was chosen because its model card describes newer
-training coverage for modern generators such as DALL-E 3, Flux, SDXL, SD3.5,
-and Midjourney V6. The first request downloads its checkpoint, which is roughly
-1.05 GB in the Hugging Face cache.
+The Hugging Face detector is optional because the default xRayon checkpoint and
+PyTorch stack are too large for small serverless bundles. To enable it locally,
+install the detector extras and turn it on in `.env`:
+
+```bash
+pip install -r requirements-detector.txt
+```
+
+The default detector is `xRayon/convnext-ai-images-detector`. It was chosen
+because its model card describes newer training coverage for modern generators
+such as DALL-E 3, Flux, SDXL, SD3.5, and Midjourney V6. The first detector
+request downloads its checkpoint, which is roughly 1.05 GB in the Hugging Face
+cache.
 
 ```bash
 HF_DETECTOR_ENABLED=true
@@ -173,7 +180,7 @@ Never hard-code or commit your API key.
 | --- | --- | --- | --- |
 | `GEMINI_API_KEY` | Yes | None | Google Gemini API key used by `google-genai`. |
 | `GEMINI_FALLBACK_MODELS` | No | `gemini-2.5-flash,gemini-2.5-flash-lite` | Comma-separated fallback models tried after transient Gemini errors. |
-| `HF_DETECTOR_ENABLED` | No | `true` | Set to `false` to skip the local classifier. |
+| `HF_DETECTOR_ENABLED` | No | `false` | Set to `true` after installing `requirements-detector.txt` to run the local classifier. |
 | `HF_DETECTOR_MODEL` | No | `xRayon/convnext-ai-images-detector` | Hugging Face detector model id. |
 | `HF_DETECTOR_VIDEO_FRAMES` | No | `8` | Number of evenly spaced video frames to classify. Clamped from 1 to 24. |
 | `HF_DETECTOR_FAKE_THRESHOLD` | No | `0.55` | Fake probability threshold used to label the detector signal. |
@@ -254,11 +261,13 @@ field after validation so the model cannot invent classifier metadata.
 
 ## Local detector notes
 
+- The base `requirements.txt` keeps production deployments lean and runs the
+  Gemini-only analyzer by default.
+- Install `requirements-detector.txt` to add `torch`, `torchvision`, `timm`,
+  `safetensors`, `transformers`, and `huggingface-hub` for local detector use.
 - The default xRayon checkpoint is large and downloads on first use into the
   Hugging Face cache.
-- `torch`, `torchvision`, `timm`, `safetensors`, `transformers`, and
-  `huggingface-hub` are included in `requirements.txt`.
-- On memory-limited hosts, set `HF_DETECTOR_ENABLED=false` or switch to the
+- On memory-limited hosts, leave `HF_DETECTOR_ENABLED=false` or switch to the
   smaller Transformers fallback model.
 - Video classification uses evenly spaced frames and aggregates the strongest
   fake probabilities, so it is a screening signal for review priority, not a
@@ -266,12 +275,10 @@ field after validation so the model cannot invent classifier metadata.
 
 ## Deployment notes
 
-The repository includes `.vercelignore` for a lean deployment package. Configure
-`GEMINI_API_KEY` and any optional detector variables in the deployment
-environment.
-
-For serverless or small-memory deployments, consider disabling the local
-detector:
+The repository includes `.vercelignore` and a lean base `requirements.txt` for
+Vercel. Configure `GEMINI_API_KEY` in the deployment environment. Keep the local
+detector disabled for Vercel because the PyTorch detector stack exceeds the
+serverless bundle storage limit:
 
 ```bash
 HF_DETECTOR_ENABLED=false
@@ -306,6 +313,7 @@ deepfake-analyzer/
     test_analyzer.py
     test_schemas.py
   cli.py
+  requirements-detector.txt
   requirements.txt
 ```
 
